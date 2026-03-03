@@ -582,7 +582,7 @@ a:focus-visible,
   .hero__inner {
     display: flex;
     gap:42px;
-    flex-direction: column-reverse;
+    flex-direction: column;
   }
 
   .hero__content {
