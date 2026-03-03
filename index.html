@@ -412,92 +412,103 @@
                 updateDots();
             }
 
-            /* After transition to a clone, silently jump to the matching real slide */
-            track.addEventListener('transitionend', function () {
+            /* After transition to a clone, silently jump to the real slide */
+            var animating = false;
+            track.addEventListener('transitionend', function (e) {
+                if (e.target !== track) return; /* ignore child transitions */
+                animating = false;
                 if (current === 0) goTo(total, false);
                 else if (current === total + 1) goTo(1, false);
             });
 
             /*
-             * Slick-style swipe: dead-zone of 8px before locking direction.
-             * touch-action: pan-y on all slider elements (CSS) tells the
-             * browser to let JS handle horizontal, browser handles vertical.
+             * Slick-style touch: events on CONTAINER (not track) so they
+             * keep firing regardless of track translateX state. No permanent
+             * direction lock — re-evaluate on every move.
              */
-            var startX = 0, startY = 0, deltaX = 0;
-            var swiping = false, direction = null;
-            var DEAD = 8, SNAP = 40;
+            var touch = null; /* null = idle, object = active drag */
 
-            function swipeStart(x, y) {
-                startX = x; startY = y; deltaX = 0;
-                swiping = true; direction = null;
-                track.style.transition = 'none';
-                if (current === 0) { current = total; setPos(current, false); }
-                else if (current === total + 1) { current = 1; setPos(current, false); }
-            }
-
-            function swipeMove(x, y, evt) {
-                if (!swiping) return;
-                var dx = x - startX, dy = y - startY;
-                /* Stay in dead-zone until movement exceeds threshold */
-                if (!direction) {
-                    if (Math.abs(dx) >= DEAD || Math.abs(dy) >= DEAD) {
-                        direction = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
-                    }
-                    if (direction !== 'h') return;
-                }
-                if (direction === 'v') return;
-                if (evt && evt.cancelable) evt.preventDefault();
-                deltaX = dx;
-                var w = sliderContainer.offsetWidth;
-                var slideW = w * 0.8, gap = 12;
-                track.style.transform = 'translateX(' + (-(current * (slideW + gap)) + (w - slideW) / 2 + deltaX) + 'px)';
-            }
-
-            function swipeEnd() {
-                if (!swiping) return;
-                swiping = false;
-                if (direction !== 'h') { direction = null; return; }
-                direction = null;
-                track.style.transition = '';
-                if (Math.abs(deltaX) > SNAP) goTo(deltaX < 0 ? current + 1 : current - 1);
-                else goTo(current);
-            }
-
-            /* Touch events */
             function onTouchStart(e) {
                 var t = e.touches[0];
-                swipeStart(t.pageX, t.pageY);
+                /* If we're mid-animation, freeze track at its current position */
+                if (animating) {
+                    var mx = new DOMMatrix(getComputedStyle(track).transform);
+                    track.style.transition = 'none';
+                    track.style.transform = 'translateX(' + mx.m41 + 'px)';
+                    track.offsetHeight;
+                    animating = false;
+                }
+                /* Snap away from clones instantly */
+                if (current === 0) { current = total; setPos(current, false); }
+                else if (current === total + 1) { current = 1; setPos(current, false); }
+
+                touch = { sx: t.pageX, sy: t.pageY, dx: 0, moved: false };
+                track.style.transition = 'none';
             }
+
             function onTouchMove(e) {
+                if (!touch) return;
                 var t = e.touches[0];
-                swipeMove(t.pageX, t.pageY, e);
+                var dx = t.pageX - touch.sx;
+                var dy = t.pageY - touch.sy;
+
+                /* Once finger moved > 5px, decide axis */
+                if (!touch.moved && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+                    touch.moved = true;
+                    touch.horizontal = Math.abs(dx) > Math.abs(dy);
+                }
+                if (!touch.moved || !touch.horizontal) return;
+
+                e.preventDefault();
+                touch.dx = dx;
+                var w = sliderContainer.offsetWidth;
+                var slideW = w * 0.8, gap = 12;
+                track.style.transform = 'translateX(' + (-(current * (slideW + gap)) + (w - slideW) / 2 + dx) + 'px)';
             }
-            function onTouchEnd() { swipeEnd(); }
 
-            track.addEventListener('touchstart', onTouchStart, { passive: true });
-            track.addEventListener('touchmove', onTouchMove, { passive: false });
-            track.addEventListener('touchend', onTouchEnd);
-            track.addEventListener('touchcancel', function () { swiping = false; direction = null; });
+            function onTouchEnd() {
+                if (!touch) return;
+                var dx = touch.dx;
+                var wasHorizontal = touch.horizontal;
+                touch = null;
 
-            /* Pointer events (mouse / stylus — skip touch to avoid double fire) */
+                track.style.transition = '';
+                if (wasHorizontal && Math.abs(dx) > 40) {
+                    animating = true;
+                    goTo(dx < 0 ? current + 1 : current - 1);
+                } else {
+                    /* Snap back or just restore transition */
+                    if (wasHorizontal) { animating = true; goTo(current); }
+                    else setPos(current);
+                }
+            }
+
+            /* Attach touch events on the CONTAINER — not the track.
+               The container never moves, so events always fire. */
+            sliderContainer.addEventListener('touchstart', onTouchStart, { passive: true });
+            sliderContainer.addEventListener('touchmove', onTouchMove, { passive: false });
+            sliderContainer.addEventListener('touchend', onTouchEnd);
+            sliderContainer.addEventListener('touchcancel', function () { touch = null; track.style.transition = ''; });
+
+            /* Pointer events for mouse / stylus (skip touch to avoid double) */
             function onPointerDown(e) {
                 if (e.pointerType === 'touch') return;
-                track.setPointerCapture(e.pointerId);
-                swipeStart(e.clientX, e.clientY);
+                sliderContainer.setPointerCapture(e.pointerId);
+                onTouchStart({ touches: [{ pageX: e.clientX, pageY: e.clientY }] });
             }
             function onPointerMove(e) {
                 if (e.pointerType === 'touch') return;
-                swipeMove(e.clientX, e.clientY, e);
+                onTouchMove({ touches: [{ pageX: e.clientX, pageY: e.clientY }], preventDefault: function () { e.preventDefault(); } });
             }
             function onPointerUp(e) {
                 if (e.pointerType === 'touch') return;
-                swipeEnd();
+                onTouchEnd();
             }
 
-            track.addEventListener('pointerdown', onPointerDown);
-            track.addEventListener('pointermove', onPointerMove);
-            track.addEventListener('pointerup', onPointerUp);
-            track.addEventListener('pointercancel', function () { swiping = false; direction = null; });
+            sliderContainer.addEventListener('pointerdown', onPointerDown);
+            sliderContainer.addEventListener('pointermove', onPointerMove);
+            sliderContainer.addEventListener('pointerup', onPointerUp);
+            sliderContainer.addEventListener('pointercancel', function () { touch = null; track.style.transition = ''; });
             track.addEventListener('dragstart', function (e) { e.preventDefault(); });
 
             goTo(1, false);
@@ -515,12 +526,12 @@
         function destroySlider() {
             if (!sliderState || !sliderContainer) return;
             var s = sliderState;
-            s.track.removeEventListener('touchstart', s.handlers.touchStart);
-            s.track.removeEventListener('touchmove', s.handlers.touchMove);
-            s.track.removeEventListener('touchend', s.handlers.touchEnd);
-            s.track.removeEventListener('pointerdown', s.handlers.pointerDown);
-            s.track.removeEventListener('pointermove', s.handlers.pointerMove);
-            s.track.removeEventListener('pointerup', s.handlers.pointerUp);
+            sliderContainer.removeEventListener('touchstart', s.handlers.touchStart);
+            sliderContainer.removeEventListener('touchmove', s.handlers.touchMove);
+            sliderContainer.removeEventListener('touchend', s.handlers.touchEnd);
+            sliderContainer.removeEventListener('pointerdown', s.handlers.pointerDown);
+            sliderContainer.removeEventListener('pointermove', s.handlers.pointerMove);
+            sliderContainer.removeEventListener('pointerup', s.handlers.pointerUp);
             s.slides.forEach(function (slide) { sliderContainer.appendChild(slide); });
             s.track.remove();
             s.dots.remove();

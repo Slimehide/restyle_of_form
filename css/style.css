@@ -559,9 +559,6 @@ a:focus-visible,
 .stat-bar__item:nth-child(1){
   min-width: 190px!important;
 }
-.hero__images--slider .hero__img-wrap img{
-  pointer-events: none;
-}
 @media (max-width: 1023px) {
   .hero__images.no-transition .hero__img-wrap:hover{
     transform:none!important;
