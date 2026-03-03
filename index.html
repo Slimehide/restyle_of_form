@@ -99,15 +99,15 @@
             <div class="container">
                 <div class="stat-bar__grid">
                     <div class="stat-bar__item fade-up">
-                        <div class="stat-bar__number" data-count-to="125" data-count-prefix="$" data-count-suffix="M">$125M</div>
+                        <div class="stat-bar__number" data-count-to="125" data-count-prefix="$" data-count-suffix="M">$0M</div>
                         <div class="stat-bar__label">Fund Size</div>
                     </div>
                     <div class="stat-bar__item fade-up">
-                        <div class="stat-bar__number">$3M–$20M+</div>
+                        <div class="stat-bar__number">$<span data-count-to="3">0</span>M–$<span data-count-to="20">20</span>M+</div>
                         <div class="stat-bar__label">Deal Size</div>
                     </div>
                     <div class="stat-bar__item fade-up">
-                        <div class="stat-bar__number" data-count-to="19">19</div>
+                        <div class="stat-bar__number" data-count-to="19">0</div>
                         <div class="stat-bar__label">Target Markets</div>
                     </div>
                 </div>
@@ -276,14 +276,12 @@
 
     <script>
     (function () {
-        /* ── Count-Up: set initial "0" state ── */
         var counters = document.querySelectorAll('[data-count-to]');
         counters.forEach(function (el) {
             el._countTarget = parseInt(el.getAttribute('data-count-to'), 10);
             el._countPrefix = el.getAttribute('data-count-prefix') || '';
             el._countSuffix = el.getAttribute('data-count-suffix') || '';
             el._counted = false;
-            /* Lock parent width so layout doesn't shift during animation */
             var item = el.closest('.stat-bar__item');
             if (item) item.style.minWidth = item.offsetWidth + 'px';
             el.textContent = el._countPrefix + '0' + el._countSuffix;
@@ -310,7 +308,6 @@
             setTimeout(function () { requestAnimationFrame(step); }, cssDelay + 200);
         }
 
-        /* ── Scroll Fade Animations ── */
         var els = document.querySelectorAll('.fade-up, .fade-left, .fade-right');
         if (els.length) {
             if ('IntersectionObserver' in window) {
@@ -318,8 +315,8 @@
                     entries.forEach(function (entry) {
                         if (entry.isIntersecting) {
                             entry.target.classList.add('is-visible');
-                            var counter = entry.target.querySelector('[data-count-to]');
-                            if (counter) startCount(counter);
+                            var countersInEl = entry.target.querySelectorAll('[data-count-to]');
+                            countersInEl.forEach(function (c) { startCount(c); });
                             setTimeout(function () {
                                 entry.target.classList.add('no-transition');
                             }, 700);
@@ -331,14 +328,12 @@
             } else {
                 els.forEach(function (el) {
                     el.classList.add('is-visible');
-                    var counter = el.querySelector('[data-count-to]');
-                    if (counter) startCount(counter);
+                    el.querySelectorAll('[data-count-to]').forEach(function (c) { startCount(c); });
                     setTimeout(function () { el.classList.add('no-transition'); }, 700);
                 });
             }
         }
 
-        /* ── Hero Mobile Slider (infinite) ── */
         var sliderContainer = document.querySelector('.hero__images');
         var sliderState = null;
 
@@ -350,7 +345,6 @@
 
             sliderContainer.classList.add('hero__images--slider');
 
-            /* Build track: [cloneLast, ...originals, cloneFirst] */
             var track = document.createElement('div');
             track.className = 'hero__slider-track';
 
@@ -364,7 +358,6 @@
             track.appendChild(cloneAfter);
             sliderContainer.appendChild(track);
 
-            /* Dots */
             var dotsWrap = document.createElement('div');
             dotsWrap.className = 'hero__slider-dots';
             slides.forEach(function (_, i) {
@@ -376,12 +369,6 @@
             });
             sliderContainer.appendChild(dotsWrap);
 
-            /*
-             * Index map (total = 4 originals):
-             *   0 = cloneLast
-             *   1..4 = real slides
-             *   5 = cloneFirst
-             */
             var current = 1;
 
             function setPos(index, animate) {
@@ -391,7 +378,7 @@
                 var gap = 12;
                 track.style.transform = 'translateX(' + (-(index * (slideW + gap)) + (w - slideW) / 2) + 'px)';
                 if (animate === false) {
-                    track.offsetHeight; /* force reflow */
+                    track.offsetHeight; 
                     track.style.transition = '';
                 }
             }
@@ -412,25 +399,18 @@
                 updateDots();
             }
 
-            /* After transition to a clone, silently jump to the real slide */
             var animating = false;
             track.addEventListener('transitionend', function (e) {
-                if (e.target !== track) return; /* ignore child transitions */
+                if (e.target !== track) return; 
                 animating = false;
                 if (current === 0) goTo(total, false);
                 else if (current === total + 1) goTo(1, false);
             });
 
-            /*
-             * Slick-style touch: events on CONTAINER (not track) so they
-             * keep firing regardless of track translateX state. No permanent
-             * direction lock — re-evaluate on every move.
-             */
-            var touch = null; /* null = idle, object = active drag */
+            var touch = null; 
 
             function onTouchStart(e) {
                 var t = e.touches[0];
-                /* If we're mid-animation, freeze track at its current position */
                 if (animating) {
                     var mx = new DOMMatrix(getComputedStyle(track).transform);
                     track.style.transition = 'none';
@@ -438,7 +418,6 @@
                     track.offsetHeight;
                     animating = false;
                 }
-                /* Snap away from clones instantly */
                 if (current === 0) { current = total; setPos(current, false); }
                 else if (current === total + 1) { current = 1; setPos(current, false); }
 
@@ -452,7 +431,6 @@
                 var dx = t.pageX - touch.sx;
                 var dy = t.pageY - touch.sy;
 
-                /* Once finger moved > 5px, decide axis */
                 if (!touch.moved && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
                     touch.moved = true;
                     touch.horizontal = Math.abs(dx) > Math.abs(dy);
@@ -483,14 +461,12 @@
                 }
             }
 
-            /* Attach touch events on the CONTAINER — not the track.
-               The container never moves, so events always fire. */
+
             sliderContainer.addEventListener('touchstart', onTouchStart, { passive: true });
             sliderContainer.addEventListener('touchmove', onTouchMove, { passive: false });
             sliderContainer.addEventListener('touchend', onTouchEnd);
             sliderContainer.addEventListener('touchcancel', function () { touch = null; track.style.transition = ''; });
 
-            /* Pointer events for mouse / stylus (skip touch to avoid double) */
             function onPointerDown(e) {
                 if (e.pointerType === 'touch') return;
                 sliderContainer.setPointerCapture(e.pointerId);
