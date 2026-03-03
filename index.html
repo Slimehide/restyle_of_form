@@ -418,59 +418,109 @@
                 else if (current === total + 1) goTo(1, false);
             });
 
-            /* Touch */
-            var startX = 0, startY = 0, dragging = false, scrolling = null;
+            /*
+             * Slick-style swipe: dead-zone of 8px before locking direction.
+             * touch-action: pan-y on all slider elements (CSS) tells the
+             * browser to let JS handle horizontal, browser handles vertical.
+             */
+            var startX = 0, startY = 0, deltaX = 0;
+            var swiping = false, direction = null;
+            var DEAD = 8, SNAP = 40;
 
-            function onTouchStart(e) {
-                startX = e.touches[0].clientX;
-                startY = e.touches[0].clientY;
-                dragging = true;
-                scrolling = null;
+            function swipeStart(x, y) {
+                startX = x; startY = y; deltaX = 0;
+                swiping = true; direction = null;
                 track.style.transition = 'none';
-                /* If mid-transition on a clone, snap to real immediately */
                 if (current === 0) { current = total; setPos(current, false); }
                 else if (current === total + 1) { current = 1; setPos(current, false); }
             }
-            function onTouchMove(e) {
-                if (!dragging) return;
-                var dx = e.touches[0].clientX - startX;
-                var dy = e.touches[0].clientY - startY;
-                if (scrolling === null) scrolling = Math.abs(dy) > Math.abs(dx);
-                if (scrolling) return;
-                e.preventDefault();
+
+            function swipeMove(x, y, evt) {
+                if (!swiping) return;
+                var dx = x - startX, dy = y - startY;
+                /* Stay in dead-zone until movement exceeds threshold */
+                if (!direction) {
+                    if (Math.abs(dx) >= DEAD || Math.abs(dy) >= DEAD) {
+                        direction = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
+                    }
+                    if (direction !== 'h') return;
+                }
+                if (direction === 'v') return;
+                if (evt && evt.cancelable) evt.preventDefault();
+                deltaX = dx;
                 var w = sliderContainer.offsetWidth;
-                var slideW = w * 0.8;
-                var gap = 12;
-                track.style.transform = 'translateX(' + (-(current * (slideW + gap)) + (w - slideW) / 2 + dx) + 'px)';
+                var slideW = w * 0.8, gap = 12;
+                track.style.transform = 'translateX(' + (-(current * (slideW + gap)) + (w - slideW) / 2 + deltaX) + 'px)';
             }
-            function onTouchEnd(e) {
-                if (!dragging || scrolling) { dragging = false; return; }
-                dragging = false;
+
+            function swipeEnd() {
+                if (!swiping) return;
+                swiping = false;
+                if (direction !== 'h') { direction = null; return; }
+                direction = null;
                 track.style.transition = '';
-                var dx = e.changedTouches[0].clientX - startX;
-                if (Math.abs(dx) > 40) goTo(dx < 0 ? current + 1 : current - 1);
+                if (Math.abs(deltaX) > SNAP) goTo(deltaX < 0 ? current + 1 : current - 1);
                 else goTo(current);
             }
+
+            /* Touch events */
+            function onTouchStart(e) {
+                var t = e.touches[0];
+                swipeStart(t.pageX, t.pageY);
+            }
+            function onTouchMove(e) {
+                var t = e.touches[0];
+                swipeMove(t.pageX, t.pageY, e);
+            }
+            function onTouchEnd() { swipeEnd(); }
 
             track.addEventListener('touchstart', onTouchStart, { passive: true });
             track.addEventListener('touchmove', onTouchMove, { passive: false });
             track.addEventListener('touchend', onTouchEnd);
+            track.addEventListener('touchcancel', function () { swiping = false; direction = null; });
+
+            /* Pointer events (mouse / stylus — skip touch to avoid double fire) */
+            function onPointerDown(e) {
+                if (e.pointerType === 'touch') return;
+                track.setPointerCapture(e.pointerId);
+                swipeStart(e.clientX, e.clientY);
+            }
+            function onPointerMove(e) {
+                if (e.pointerType === 'touch') return;
+                swipeMove(e.clientX, e.clientY, e);
+            }
+            function onPointerUp(e) {
+                if (e.pointerType === 'touch') return;
+                swipeEnd();
+            }
+
+            track.addEventListener('pointerdown', onPointerDown);
+            track.addEventListener('pointermove', onPointerMove);
+            track.addEventListener('pointerup', onPointerUp);
+            track.addEventListener('pointercancel', function () { swiping = false; direction = null; });
+            track.addEventListener('dragstart', function (e) { e.preventDefault(); });
 
             goTo(1, false);
 
             sliderState = {
                 track: track, dots: dotsWrap, slides: slides,
                 reposition: function () { setPos(current, false); },
-                handlers: { start: onTouchStart, move: onTouchMove, end: onTouchEnd }
+                handlers: {
+                    touchStart: onTouchStart, touchMove: onTouchMove, touchEnd: onTouchEnd,
+                    pointerDown: onPointerDown, pointerMove: onPointerMove, pointerUp: onPointerUp
+                }
             };
         }
 
         function destroySlider() {
             if (!sliderState || !sliderContainer) return;
             var s = sliderState;
-            s.track.removeEventListener('touchstart', s.handlers.start);
-            s.track.removeEventListener('touchmove', s.handlers.move);
-            s.track.removeEventListener('touchend', s.handlers.end);
+            s.track.removeEventListener('touchstart', s.handlers.touchStart);
+            s.track.removeEventListener('touchmove', s.handlers.touchMove);
+            s.track.removeEventListener('touchend', s.handlers.touchEnd);
+            s.track.removeEventListener('pointerdown', s.handlers.pointerDown);
+            s.track.removeEventListener('pointermove', s.handlers.pointerMove);
+            s.track.removeEventListener('pointerup', s.handlers.pointerUp);
             s.slides.forEach(function (slide) { sliderContainer.appendChild(slide); });
             s.track.remove();
             s.dots.remove();

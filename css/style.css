@@ -810,11 +810,22 @@ a:focus-visible,
   overflow: hidden;
   position: relative;
 }
+.hero__images--slider,
+.hero__images--slider * {
+  touch-action: pan-y;
+  -webkit-user-drag: none;
+}
 .hero__slider-track {
   display: flex;
   gap: 12px;
   transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   will-change: transform;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: grab;
+}
+.hero__slider-track:active {
+  cursor: grabbing;
 }
 .hero__images--slider .hero__img-wrap {
   flex: 0 0 80%;
